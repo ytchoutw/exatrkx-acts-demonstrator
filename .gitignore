@@ -1,3 +1,6 @@
+run_inference.sh
+output*
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
