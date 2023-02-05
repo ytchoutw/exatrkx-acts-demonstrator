@@ -4,6 +4,21 @@ Small script that runs the Exa.TrkX track finding module in ACTS with data simul
 
 ## Usage
 
+Build ACTS with e.g.
+
+```bash
+cmake .. \
+    -D ACTS_BUILD_PLUGIN_DD4HEP=ON \
+    -D ACTS_BUILD_PLUGIN_EXATRKX=ON \
+    -D ACTS_BUILD_FATRAS=ON \
+    -D ACTS_BUILD_EXAMPLES=ON \
+    -D ACTS_BUILD_EXAMPLES_DD4HEP=ON \
+    -D ACTS_BUILD_EXAMPLES_EXATRKX=ON \
+    -D ACTS_BUILD_EXAMPLES_PYTHIA8=ON \
+    -D ACTS_BUILD_EXAMPLES_PYTHON_BIN=ON \
+    -D ACTS_BUILD_ODD=ON
+```
+
 Setup the environment, e.g. with a bash script `run_inference.sh` like:
 
 ```bash
