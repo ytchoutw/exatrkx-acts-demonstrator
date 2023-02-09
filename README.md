@@ -39,7 +39,7 @@ The script requires some options:
 
 The repository contains two sets of models, one trained with *truth hits* and one with *smeared digitization*. Along with this, pass `truth` or `smear` as *digitization config*, this loads the corresponding digitization config file.
 
-The small evaulation script `evaluate.py` takes the resulting `track_finding_performance_exatrkx.root`, and makes a simple performance plot.
+The small evaulation script `evaluate.py` takes the result directory as input, and makes some small performance plots.
 
 ## Requirements
 

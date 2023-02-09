@@ -7,6 +7,7 @@ import time
 import warnings
 import json
 import argparse
+import subprocess
 import math
 from pathlib import Path
 
@@ -69,6 +70,20 @@ elif args['digi'] == 'truth':
 assert digiConfigFile.exists()
 
 
+#######################
+# Start GPU profiling #
+#######################
+
+gpu_profiler_args = [
+    "nvidia-smi",
+    "--query-gpu=timestamp,index,memory.total,memory.reserved,memory.free,memory.used",
+    "--format=csv,nounits",
+    "--loop-ms=10",
+    "--filename={}".format(outputDir / "gpu_memory_profile.csv")
+]
+
+gpu_profiler = subprocess.Popen(gpu_profiler_args)
+
 #####################
 # Prepare sequencer #
 #####################
@@ -91,15 +106,15 @@ s = acts.examples.Sequencer(
 s = addPythia8(
     s,
     rnd=rnd,
-    outputDirCsv=str(outputDir/"train_all"),
     hardProcess=["HardQCD:all = on"],
     #hardProcess=["Top:qqbar2ttbar=on"],
+    outputDirRoot=str(outputDir)
 )
 
 particleSelection = ParticleSelectorConfig(
-    rho=(0.0, 2.0*u.mm),
+    rho=(0.0*u.mm, 2.0*u.mm),
     pt=(500*u.MeV, 20*u.GeV),
-    absEta=(None, 3)
+    absEta=(0, 3)
 )
 
 addFatras(
@@ -108,6 +123,7 @@ addFatras(
     field,
     rnd=rnd,
     preselectParticles=particleSelection,
+    outputDirRoot=str(outputDir)
 )
 
 s = addDigitization(
@@ -203,4 +219,50 @@ s.addWriter(
     )
 )
 
+
+#################
+# Track fitting #
+#################
+
+s.addAlgorithm(
+    acts.examples.TrackParamsEstimationAlgorithm(
+        level=acts.logging.FATAL,
+        inputSpacePoints=["exatrkx_spacepoints"],
+        inputProtoTracks="exatrkx_prototracks",
+        inputSourceLinks="sourcelinks",
+        outputProtoTracks="exatrkx_estimated_prototracks",
+        outputTrackParameters="exatrkx_estimated_parameters",
+        trackingGeometry=trackingGeometry,
+        magneticField=field,
+    )
+)
+
+kalmanOptions = {
+    "multipleScattering": True,
+    "energyLoss": True,
+    "reverseFilteringMomThreshold": 0.0,
+    "freeToBoundCorrection": acts.examples.FreeToBoundCorrection(False),
+}
+
+s.addAlgorithm(
+    acts.examples.TrackFittingAlgorithm(
+        level=acts.logging.INFO,
+        inputMeasurements="measurements",
+        inputSourceLinks="sourcelinks",
+        inputProtoTracks="exatrkx_estimated_prototracks",
+        inputInitialTrackParameters="exatrkx_estimated_parameters",
+        outputTrajectories="exatrkx_kalman_trajectories",
+        directNavigation=False,
+        pickTrack=-1,
+        trackingGeometry=trackingGeometry,
+        fit=acts.examples.makeKalmanFitterFunction(
+            trackingGeometry, field, **kalmanOptions
+        ),
+    )
+)
+
+
 s.run()
+
+# stop GPU profiler
+gpu_profiler.kill()
