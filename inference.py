@@ -108,6 +108,7 @@ s = acts.examples.Sequencer(
     events=args["events"],
     numThreads=1,
     outputDir=str(outputDir),
+    trackFpes=False,
 )
 
 
@@ -257,16 +258,21 @@ s.addWriter(
 #################
 # Track fitting #
 #################
+if False:  # Does not work yet
+    s.addAlgorithm(
+        acts.examples.PrototracksToSeeds(
+            level=acts.logging.INFO,
+            inputSpacePoints="exatrkx_spacepoints",
+            inputProtoTracks="exatrkx_prototracks",
+            outputSeeds="exatrkx_seeds",
+            outputProtoTracks="exatrkx_prototracks_after_seeds",
+        )
+    )
 
-# Need to wait for a prototracks-to-seeds algorithm to arrive in main
-if False:
     s.addAlgorithm(
         acts.examples.TrackParamsEstimationAlgorithm(
-            level=acts.logging.FATAL,
-            inputSpacePoints=["exatrkx_spacepoints"],
-            inputProtoTracks="exatrkx_prototracks",
-            inputSourceLinks="sourcelinks",
-            outputProtoTracks="exatrkx_estimated_prototracks",
+            level=acts.logging.INFO,
+            inputSeeds="exatrkx_seeds",
             outputTrackParameters="exatrkx_estimated_parameters",
             trackingGeometry=trackingGeometry,
             magneticField=field,
@@ -278,19 +284,19 @@ if False:
         "energyLoss": True,
         "reverseFilteringMomThreshold": 0.0,
         "freeToBoundCorrection": acts.examples.FreeToBoundCorrection(False),
+        "level": acts.logging.INFO,
     }
 
     s.addAlgorithm(
         acts.examples.TrackFittingAlgorithm(
             level=acts.logging.INFO,
+            calibrator=acts.examples.makePassThroughCalibrator(),
             inputMeasurements="measurements",
             inputSourceLinks="sourcelinks",
-            inputProtoTracks="exatrkx_estimated_prototracks",
+            inputProtoTracks="exatrkx_prototracks_after_seeds",
             inputInitialTrackParameters="exatrkx_estimated_parameters",
-            outputTrajectories="exatrkx_kalman_trajectories",
-            directNavigation=False,
+            outputTracks="exatrkx_kalman_tracks",
             pickTrack=-1,
-            trackingGeometry=trackingGeometry,
             fit=acts.examples.makeKalmanFitterFunction(
                 trackingGeometry, field, **kalmanOptions
             ),
