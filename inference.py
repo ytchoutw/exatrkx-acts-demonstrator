@@ -26,21 +26,31 @@ logger = acts.logging.getLogger("main")
 # Command line handling #
 #########################
 
-parser = argparse.ArgumentParser(description='Exa.TrkX data generation/reconstruction script')
-parser.add_argument('events', help="how many events to run", type=int)
-parser.add_argument('models', help="where the models are stored", type=str)
-parser.add_argument('digi', help="digitization mode", type=str, choices=['truth', 'smear'])
-parser.add_argument('--output', '-o', help="where to store output data", type=str, default="output")
-parser.add_argument('--embdim', '-e', help="Hyperparameter embedding dim", type=int, default=8)
-parser.add_argument('--verbose', help="Make ExaTrkX algorithm verbose", action="store_true")
+parser = argparse.ArgumentParser(
+    description="Exa.TrkX data generation/reconstruction script"
+)
+parser.add_argument("events", help="how many events to run", type=int)
+parser.add_argument("models", help="where the models are stored", type=str)
+parser.add_argument(
+    "digi", help="digitization mode", type=str, choices=["truth", "smear"]
+)
+parser.add_argument(
+    "--output", "-o", help="where to store output data", type=str, default="output"
+)
+parser.add_argument(
+    "--embdim", "-e", help="Hyperparameter embedding dim", type=int, default=8
+)
+parser.add_argument(
+    "--verbose", "-v", help="Make ExaTrkX algorithm verbose", action="store_true"
+)
 args = vars(parser.parse_args())
 
-assert args['events'] > 0
+assert args["events"] > 0
 
-outputDir = Path(args['output'])
+outputDir = Path(args["output"])
 (outputDir / "train_all").mkdir(exist_ok=True, parents=True)
 
-modelDir = Path(args['models'])
+modelDir = Path(args["models"])
 
 assert (modelDir / "embed.pt").exists()
 assert (modelDir / "filter.pt").exists()
@@ -58,14 +68,16 @@ oddMaterialMap = oddDir / "data/odd-material-maps.root"
 assert oddMaterialMap.exists()
 
 oddMaterialDeco = acts.IMaterialDecorator.fromFile(oddMaterialMap)
-detector, trackingGeometry, decorators = getOpenDataDetector(oddDir, mdecorator=oddMaterialDeco)
+detector, trackingGeometry, decorators = getOpenDataDetector(
+    oddDir, mdecorator=oddMaterialDeco
+)
 
 geoSelectionExaTrkX = baseDir / "detector/odd-geo-selection-whole-detector.json"
 assert geoSelectionExaTrkX.exists()
 
-if args['digi'] == 'smear':
+if args["digi"] == "smear":
     digiConfigFile = baseDir / "detector/odd-digi-smearing-config.json"
-elif args['digi'] == 'truth':
+elif args["digi"] == "truth":
     digiConfigFile = baseDir / "detector/odd-digi-true-config.json"
 assert digiConfigFile.exists()
 
@@ -79,7 +91,7 @@ gpu_profiler_args = [
     "--query-gpu=timestamp,index,memory.total,memory.reserved,memory.free,memory.used",
     "--format=csv,nounits",
     "--loop-ms=10",
-    "--filename={}".format(outputDir / "gpu_memory_profile.csv")
+    "--filename={}".format(outputDir / "gpu_memory_profile.csv"),
 ]
 
 gpu_profiler = subprocess.Popen(gpu_profiler_args)
@@ -93,7 +105,7 @@ field = acts.ConstantBField(acts.Vector3(0, 0, 2 * u.T))
 rnd = acts.examples.RandomNumbers(seed=42)
 
 s = acts.examples.Sequencer(
-    events=args['events'],
+    events=args["events"],
     numThreads=1,
     outputDir=str(outputDir),
 )
@@ -107,14 +119,15 @@ s = addPythia8(
     s,
     rnd=rnd,
     hardProcess=["HardQCD:all = on"],
-    #hardProcess=["Top:qqbar2ttbar=on"],
-    outputDirRoot=str(outputDir)
+    # hardProcess=["Top:qqbar2ttbar=on"],
+    outputDirRoot=str(outputDir),
 )
 
 particleSelection = ParticleSelectorConfig(
-    rho=(0.0*u.mm, 2.0*u.mm),
-    pt=(500*u.MeV, 20*u.GeV),
-    absEta=(0, 3)
+    rho=(0.0 * u.mm, 2.0 * u.mm),
+    pt=(500 * u.MeV, 20 * u.GeV),
+    absEta=(0, 3),
+    removeNeutral=True,
 )
 
 addFatras(
@@ -122,8 +135,9 @@ addFatras(
     trackingGeometry,
     field,
     rnd=rnd,
-    preselectParticles=particleSelection,
-    outputDirRoot=str(outputDir)
+    preSelectParticles=particleSelection,
+    # postSelectParticles=particleSelection,
+    outputDirRoot=str(outputDir),
 )
 
 s = addDigitization(
@@ -151,7 +165,6 @@ s.addWriter(
         level=acts.logging.INFO,
         inputMeasurements="measurements",
         inputClusters="clusters",
-        inputSimHits="simhits",
         inputMeasurementSimHitsMap="measurement_simhits_map",
         outputDir=str(outputDir / "train_all"),
     )
@@ -177,35 +190,56 @@ s.addAlgorithm(
         inputMeasurements="measurements",
         outputSpacePoints="exatrkx_spacepoints",
         trackingGeometry=trackingGeometry,
-        geometrySelection=acts.examples.readJsonGeometryList(
-            str(geoSelectionExaTrkX)
-        ),
+        geometrySelection=acts.examples.readJsonGeometryList(str(geoSelectionExaTrkX)),
     )
 )
 
-exaTrkXConfig = {
-    "modelDir" : str(modelDir),
-    "spacepointFeatures" : 3,
-    "embeddingDim" : args["embdim"],
-    "rVal" : 0.2,
-    "knnVal" : 500,
-    "filterCut" : 0.01,
-    "n_chunks" : 5,
-    "edgeCut" : 0.5,
+exatrkxLogLevel = acts.logging.VERBOSE if args["verbose"] else acts.logging.INFO
+
+metricLearningConfig = {
+    "level": exatrkxLogLevel,
+    "modelPath": str(modelDir / "embed.pt"),
+    "spacepointFeatures": 3,
+    "embeddingDim": args["embdim"],
+    "rVal": 0.2,
+    "knnVal": 100,
 }
 
-print("Exa.TrkX Configuration")
-pprint.pprint(exaTrkXConfig, indent=4)
+filterConfig = {
+    "level": exatrkxLogLevel,
+    "cut": 0.01,
+    "modelPath": str(modelDir / "filter.pt"),
+    "nChunks": 5,
+}
+
+gnnConfig = {
+    "level": exatrkxLogLevel,
+    "cut": 0.5,
+    "modelPath": str(modelDir / "gnn.pt"),
+    "undirected": True,
+}
+
+for cfg in [metricLearningConfig, filterConfig, gnnConfig]:
+    assert Path(cfg["modelPath"]).exists()
+
+graphConstructor = acts.examples.TorchMetricLearning(**metricLearningConfig)
+edgeClassifiers = [
+    acts.examples.TorchEdgeClassifier(**filterConfig),
+    acts.examples.TorchEdgeClassifier(**gnnConfig),
+]
+trackBuilder = acts.examples.BoostTrackBuilding(level=acts.logging.INFO)
 
 s.addAlgorithm(
     acts.examples.TrackFindingAlgorithmExaTrkX(
-        level=acts.logging.VERBOSE if args['verbose'] else acts.logging.INFO,
+        level=exatrkxLogLevel,
         inputSpacePoints="exatrkx_spacepoints",
         outputProtoTracks="exatrkx_prototracks",
-        trackFinderML=acts.examples.ExaTrkXTrackFindingTorch(**exaTrkXConfig),
-        rScale = 1000.,
-        phiScale = math.pi,
-        zScale = 1000.,
+        graphConstructor=graphConstructor,
+        edgeClassifiers=edgeClassifiers,
+        trackBuilder=trackBuilder,
+        rScale=1000.0,
+        phiScale=3.14,
+        zScale=1000.0,
     )
 )
 
@@ -224,42 +258,44 @@ s.addWriter(
 # Track fitting #
 #################
 
-s.addAlgorithm(
-    acts.examples.TrackParamsEstimationAlgorithm(
-        level=acts.logging.FATAL,
-        inputSpacePoints=["exatrkx_spacepoints"],
-        inputProtoTracks="exatrkx_prototracks",
-        inputSourceLinks="sourcelinks",
-        outputProtoTracks="exatrkx_estimated_prototracks",
-        outputTrackParameters="exatrkx_estimated_parameters",
-        trackingGeometry=trackingGeometry,
-        magneticField=field,
+# Need to wait for a prototracks-to-seeds algorithm to arrive in main
+if False:
+    s.addAlgorithm(
+        acts.examples.TrackParamsEstimationAlgorithm(
+            level=acts.logging.FATAL,
+            inputSpacePoints=["exatrkx_spacepoints"],
+            inputProtoTracks="exatrkx_prototracks",
+            inputSourceLinks="sourcelinks",
+            outputProtoTracks="exatrkx_estimated_prototracks",
+            outputTrackParameters="exatrkx_estimated_parameters",
+            trackingGeometry=trackingGeometry,
+            magneticField=field,
+        )
     )
-)
 
-kalmanOptions = {
-    "multipleScattering": True,
-    "energyLoss": True,
-    "reverseFilteringMomThreshold": 0.0,
-    "freeToBoundCorrection": acts.examples.FreeToBoundCorrection(False),
-}
+    kalmanOptions = {
+        "multipleScattering": True,
+        "energyLoss": True,
+        "reverseFilteringMomThreshold": 0.0,
+        "freeToBoundCorrection": acts.examples.FreeToBoundCorrection(False),
+    }
 
-s.addAlgorithm(
-    acts.examples.TrackFittingAlgorithm(
-        level=acts.logging.INFO,
-        inputMeasurements="measurements",
-        inputSourceLinks="sourcelinks",
-        inputProtoTracks="exatrkx_estimated_prototracks",
-        inputInitialTrackParameters="exatrkx_estimated_parameters",
-        outputTrajectories="exatrkx_kalman_trajectories",
-        directNavigation=False,
-        pickTrack=-1,
-        trackingGeometry=trackingGeometry,
-        fit=acts.examples.makeKalmanFitterFunction(
-            trackingGeometry, field, **kalmanOptions
-        ),
+    s.addAlgorithm(
+        acts.examples.TrackFittingAlgorithm(
+            level=acts.logging.INFO,
+            inputMeasurements="measurements",
+            inputSourceLinks="sourcelinks",
+            inputProtoTracks="exatrkx_estimated_prototracks",
+            inputInitialTrackParameters="exatrkx_estimated_parameters",
+            outputTrajectories="exatrkx_kalman_trajectories",
+            directNavigation=False,
+            pickTrack=-1,
+            trackingGeometry=trackingGeometry,
+            fit=acts.examples.makeKalmanFitterFunction(
+                trackingGeometry, field, **kalmanOptions
+            ),
+        )
     )
-)
 
 
 s.run()
