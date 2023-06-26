@@ -63,7 +63,10 @@ assert (modelDir / "gnn.pt").exists()
 
 baseDir = Path(os.path.dirname(__file__))
 
-oddDir = Path("/home/iwsatlas1/bhuth/acts/thirdparty/OpenDataDetector")
+oddDir = Path.home() / "acts/thirdparty/OpenDataDetector"
+if not oddDir.exists():
+    oddDir = Path.home() / "Documents/acts_project/acts/thirdparty/OpenDataDetector"
+
 oddMaterialMap = oddDir / "data/odd-material-maps.root"
 assert oddMaterialMap.exists()
 
@@ -258,50 +261,49 @@ s.addWriter(
 #################
 # Track fitting #
 #################
-if False:  # Does not work yet
-    s.addAlgorithm(
-        acts.examples.PrototracksToSeeds(
-            level=acts.logging.INFO,
-            inputSpacePoints="exatrkx_spacepoints",
-            inputProtoTracks="exatrkx_prototracks",
-            outputSeeds="exatrkx_seeds",
-            outputProtoTracks="exatrkx_prototracks_after_seeds",
-        )
+s.addAlgorithm(
+    acts.examples.PrototracksToSeeds(
+        level=acts.logging.INFO,
+        inputSpacePoints="exatrkx_spacepoints",
+        inputProtoTracks="exatrkx_prototracks",
+        outputSeeds="exatrkx_seeds",
+        outputProtoTracks="exatrkx_prototracks_after_seeds",
     )
+)
 
-    s.addAlgorithm(
-        acts.examples.TrackParamsEstimationAlgorithm(
-            level=acts.logging.INFO,
-            inputSeeds="exatrkx_seeds",
-            outputTrackParameters="exatrkx_estimated_parameters",
-            trackingGeometry=trackingGeometry,
-            magneticField=field,
-        )
+s.addAlgorithm(
+    acts.examples.TrackParamsEstimationAlgorithm(
+        level=acts.logging.INFO,
+        inputSeeds="exatrkx_seeds",
+        outputTrackParameters="exatrkx_estimated_parameters",
+        trackingGeometry=trackingGeometry,
+        magneticField=field,
     )
+)
 
-    kalmanOptions = {
-        "multipleScattering": True,
-        "energyLoss": True,
-        "reverseFilteringMomThreshold": 0.0,
-        "freeToBoundCorrection": acts.examples.FreeToBoundCorrection(False),
-        "level": acts.logging.INFO,
-    }
+kalmanOptions = {
+    "multipleScattering": True,
+    "energyLoss": True,
+    "reverseFilteringMomThreshold": 0.0,
+    "freeToBoundCorrection": acts.examples.FreeToBoundCorrection(False),
+    "level": acts.logging.INFO,
+}
 
-    s.addAlgorithm(
-        acts.examples.TrackFittingAlgorithm(
-            level=acts.logging.INFO,
-            calibrator=acts.examples.makePassThroughCalibrator(),
-            inputMeasurements="measurements",
-            inputSourceLinks="sourcelinks",
-            inputProtoTracks="exatrkx_prototracks_after_seeds",
-            inputInitialTrackParameters="exatrkx_estimated_parameters",
-            outputTracks="exatrkx_kalman_tracks",
-            pickTrack=-1,
-            fit=acts.examples.makeKalmanFitterFunction(
-                trackingGeometry, field, **kalmanOptions
-            ),
-        )
+s.addAlgorithm(
+    acts.examples.TrackFittingAlgorithm(
+        level=acts.logging.INFO,
+        calibrator=acts.examples.makePassThroughCalibrator(),
+        inputMeasurements="measurements",
+        inputSourceLinks="sourcelinks",
+        inputProtoTracks="exatrkx_prototracks_after_seeds",
+        inputInitialTrackParameters="exatrkx_estimated_parameters",
+        outputTracks="exatrkx_kalman_tracks",
+        pickTrack=-1,
+        fit=acts.examples.makeKalmanFitterFunction(
+            trackingGeometry, field, **kalmanOptions
+        ),
     )
+)
 
 
 s.run()
