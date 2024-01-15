@@ -35,10 +35,13 @@ parser.add_argument(
     "digi", help="digitization mode", type=str, choices=["truth", "smear"]
 )
 parser.add_argument(
-    "--output", "-o", help="where to store output data", type=str, default="output"
+    "--output", "-o", help="where to store output data", type=str, default="output_test"
 )
 parser.add_argument(
     "--embdim", "-e", help="Hyperparameter embedding dim", type=int, default=8
+)
+parser.add_argument(
+    "--triton", "-t", help="Run using Triton inference server", action="store_true"
 )
 parser.add_argument(
     "--verbose", "-v", help="Make ExaTrkX algorithm verbose", action="store_true"
@@ -63,7 +66,14 @@ assert (modelDir / "gnn.pt").exists()
 
 baseDir = Path(os.path.dirname(__file__))
 
-oddDir = Path.home() / "acts/thirdparty/OpenDataDetector"
+
+# oddDir = Path.home() / "acts/thirdparty/OpenDataDetector"
+oddDir = Path("/global/homes/y/ychou/ACTS/acts/thirdparty/OpenDataDetector")
+# oddDir = Path("/workspace/ACTS/acts/thirdparty/OpenDataDetector")
+
+
+print(oddDir)
+
 if not oddDir.exists():
     oddDir = Path.home() / "Documents/acts_project/acts/thirdparty/OpenDataDetector"
 
@@ -119,69 +129,93 @@ s = acts.examples.Sequencer(
 # Simulation & Digitization #
 #############################
 
-s = addPythia8(
-    s,
-    rnd=rnd,
-    hardProcess=["HardQCD:all = on"],
-    # hardProcess=["Top:qqbar2ttbar=on"],
-    outputDirRoot=str(outputDir),
-)
+# s = addPythia8(
+#     s,
+#     rnd=rnd,
+#     # hardProcess=["HardQCD:all = on"],
+#     hardProcess=["Top:qqbar2ttbar=on"],
+#     npileup=200,
+#     outputDirRoot=str(outputDir),
+# )
 
-particleSelection = ParticleSelectorConfig(
-    rho=(0.0 * u.mm, 2.0 * u.mm),
-    pt=(500 * u.MeV, 20 * u.GeV),
-    absEta=(0, 3),
-    removeNeutral=True,
-)
+# particleSelection = ParticleSelectorConfig(
+#     rho=(0.0 * u.mm, 2.0 * u.mm),
+#     pt=(500 * u.MeV, 20 * u.GeV),
+#     absEta=(0, 3),
+#     removeNeutral=True,
+# )
 
-addFatras(
-    s,
-    trackingGeometry,
-    field,
-    rnd=rnd,
-    preSelectParticles=particleSelection,
-    # postSelectParticles=particleSelection,
-    outputDirRoot=str(outputDir),
-)
+# addFatras(
+#     s,
+#     trackingGeometry,
+#     field,
+#     rnd=rnd,
+#     preSelectParticles=particleSelection,
+#     # postSelectParticles=particleSelection,
+#     outputDirRoot=str(outputDir),
+# )
 
-s = addDigitization(
-    s,
-    trackingGeometry,
-    field,
-    digiConfigFile=digiConfigFile,
-    outputDirRoot=None,
-    outputDirCsv=str(outputDir / "train_all"),
-    rnd=rnd,
-    logLevel=acts.logging.INFO,
-)
+# s = addDigitization(
+#     s,
+#     trackingGeometry,
+#     field,
+#     digiConfigFile=digiConfigFile,
+#     outputDirRoot=None,
+#     outputDirCsv=str(outputDir / "train_all"),
+#     rnd=rnd,
+#     logLevel=acts.logging.INFO,
+# )
 
-s.addWriter(
-    acts.examples.CsvSimHitWriter(
+# s.addWriter(
+#     acts.examples.CsvSimHitWriter(
+#         level=acts.logging.INFO,
+#         inputSimHits="simhits",
+#         outputDir=str(outputDir / "train_all"),
+#         outputStem="truth",
+#     )
+# )
+
+# s.addWriter(
+#     acts.examples.CsvMeasurementWriter(
+#         level=acts.logging.INFO,
+#         inputMeasurements="measurements",
+#         inputClusters="clusters",
+#         inputMeasurementSimHitsMap="measurement_simhits_map",
+#         outputDir=str(outputDir / "train_all"),
+#     )
+# )
+
+# s.addWriter(
+#     acts.examples.CsvTrackingGeometryWriter(
+#         level=acts.logging.INFO,
+#         trackingGeometry=trackingGeometry,
+#         outputDir=str(outputDir),
+#         writePerEvent=False,
+#     )
+# )
+
+s.addReader(
+    acts.examples.CsvSimHitReader(
         level=acts.logging.INFO,
-        inputSimHits="simhits",
-        outputDir=str(outputDir / "train_all"),
-        outputStem="truth",
+        outputSimHits="simhits",
+        inputDir=str(outputDir / "train_all"),
+        inputStem="truth",
     )
 )
 
-s.addWriter(
-    acts.examples.CsvMeasurementWriter(
-        level=acts.logging.INFO,
-        inputMeasurements="measurements",
-        inputClusters="clusters",
-        inputMeasurementSimHitsMap="measurement_simhits_map",
-        outputDir=str(outputDir / "train_all"),
-    )
+
+s.addReader(
+ acts.examples.CsvMeasurementReader(
+    level=acts.logging.INFO,
+    outputMeasurements="measurements",
+    outputMeasurementSimHitsMap="measurement_simhits_map",
+    outputSourceLinks="sourcelinks",
+    outputMeasurementParticlesMap="meas_ptcl_map",
+    inputSimHits="simhits",
+    inputDir=str(outputDir / "train_all"),     
+ )   
 )
 
-s.addWriter(
-    acts.examples.CsvTrackingGeometryWriter(
-        level=acts.logging.INFO,
-        trackingGeometry=trackingGeometry,
-        outputDir=str(outputDir),
-        writePerEvent=False,
-    )
-)
 
 #########################
 # ExaTrkX Track Finding #
@@ -200,14 +234,23 @@ s.addAlgorithm(
 
 exatrkxLogLevel = acts.logging.VERBOSE if args["verbose"] else acts.logging.INFO
 
+# metricLearningConfig = {
+#     "level": acts.logging.INFO,
+#     "modelPath": str(modelDir / "embed.pt"),
+#     "spacepointFeatures": 3,
+#     "embeddingDim": args["embdim"],
+#     "rVal": 0.2,
+#     "knnVal": 100,
+# }
+
 metricLearningConfig = {
-    "level": exatrkxLogLevel,
     "modelPath": str(modelDir / "embed.pt"),
-    "spacepointFeatures": 3,
     "embeddingDim": args["embdim"],
     "rVal": 0.2,
     "knnVal": 100,
+    "numFeatures": 3,
 }
+
 
 filterConfig = {
     "level": exatrkxLogLevel,
@@ -223,39 +266,75 @@ gnnConfig = {
     "undirected": True,
 }
 
+
 for cfg in [metricLearningConfig, filterConfig, gnnConfig]:
     assert Path(cfg["modelPath"]).exists()
 
-graphConstructor = acts.examples.TorchMetricLearning(**metricLearningConfig)
+graphConstructor = acts.examples.TorchMetricLearning(**metricLearningConfig, level=exatrkxLogLevel)
 edgeClassifiers = [
     acts.examples.TorchEdgeClassifier(**filterConfig),
     acts.examples.TorchEdgeClassifier(**gnnConfig),
 ]
 trackBuilder = acts.examples.BoostTrackBuilding(level=acts.logging.INFO)
 
-s.addAlgorithm(
-    acts.examples.TrackFindingAlgorithmExaTrkX(
-        level=exatrkxLogLevel,
-        inputSpacePoints="exatrkx_spacepoints",
-        outputProtoTracks="exatrkx_prototracks",
-        graphConstructor=graphConstructor,
-        edgeClassifiers=edgeClassifiers,
-        trackBuilder=trackBuilder,
-        rScale=1000.0,
-        phiScale=3.14,
-        zScale=1000.0,
-    )
-)
+# s.addAlgorithm(
+#     acts.examples.TrackFindingAlgorithmExaTrkX(
+#         level=exatrkxLogLevel,
+#         inputSpacePoints="exatrkx_spacepoints",
+#         outputProtoTracks="exatrkx_prototracks",
+#         graphConstructor=graphConstructor,
+#         edgeClassifiers=edgeClassifiers,
+#         trackBuilder=trackBuilder,
+#         rScale=1000.0,
+#         phiScale=3.14,
+#         zScale=1000.0,
+#     )
+# )
 
-s.addWriter(
-    acts.examples.TrackFinderPerformanceWriter(
-        level=acts.logging.INFO,
-        inputProtoTracks="exatrkx_prototracks",
-        inputParticles="particles_initial",
-        inputMeasurementParticlesMap="measurement_particles_map",
-        filePath=str(outputDir / "track_finding_performance_exatrkx.root"),
+
+if args["triton"]:
+
+    s.addAlgorithm(
+        acts.examples.TrackFindingAlgorithmExaTrkXTriton(
+            level=exatrkxLogLevel,
+            inputSpacePoints="exatrkx_spacepoints",
+            outputProtoTracks="exatrkx_prototracks",
+            graphConstructor=graphConstructor,
+            edgeClassifiers=edgeClassifiers,
+            trackBuilder=trackBuilder,
+            tritonModelName="exatrkxgpu-acts-smearhits",
+            tritonServerUrl="localhost:8001",
+            rScale=1000.0,
+            phiScale=3.14,
+            zScale=1000.0,
+        )
     )
-)
+
+else:
+    s.addAlgorithm(
+        acts.examples.TrackFindingAlgorithmExaTrkXTriton(
+            level=exatrkxLogLevel,
+            inputSpacePoints="exatrkx_spacepoints",
+            outputProtoTracks="exatrkx_prototracks",
+            graphConstructor=graphConstructor,
+            edgeClassifiers=edgeClassifiers,
+            trackBuilder=trackBuilder,
+            rScale=1000.0,
+            phiScale=3.14,
+            zScale=1000.0,
+        )
+    )
+
+
+# s.addWriter(
+#     acts.examples.TrackFinderPerformanceWriter(
+#         level=acts.logging.INFO,
+#         inputProtoTracks="exatrkx_prototracks",
+#         inputParticles="particles_initial",
+#         inputMeasurementParticlesMap="measurement_particles_map",
+#         filePath=str(outputDir / "track_finding_performance_exatrkx.root"),
+#     )
+# )
 
 
 #################
@@ -280,6 +359,21 @@ s.addAlgorithm(
         magneticField=field,
     )
 )
+
+
+# s.addAlgorithm(
+#     acts.examples.PrototracksToParameters(
+#         level=acts.logging.INFO,
+#         inputProtoTracks="exatrkx_prototracks",
+#         inputSpacePoints="exatrkx_spacepoints",
+#         outputSeeds="exatrkx_seeds",
+#         outputProtoTracks="exatrkx_prototracks_after_seeds",
+#         outputParameters="exatrkx_estimated_parameters",
+#         geometry=trackingGeometry,
+#         magneticField=field,
+#     )
+# )
+
 
 kalmanOptions = {
     "multipleScattering": True,
